@@ -7,13 +7,28 @@ using RuleEngine.Interfaces;
 
 namespace RuleEngine
 {
-	public class Application
+    using System.Collections.Generic;
+    using System.Linq;
+
+    public class Application
 	{
-		private IParser _parser;
+        private static readonly Dictionary<string, Type> _knownTypes =
+            new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+
+        private IParser _parser;
 		private ILogger _log;
 		private DbContext _context;
 
-		public Application(IParser parser, ILogger<Application> log, BusinessRuleContext context)
+        static Application()
+        {
+            _knownTypes["int"] = typeof(int);
+            _knownTypes["double"] = typeof(double);
+            _knownTypes["long"] = typeof(long);
+            _knownTypes["float"] = typeof(float);
+            _knownTypes["bool"] = typeof(bool);
+        }
+
+        public Application(IParser parser, ILogger<Application> log, BusinessRuleContext context)
 		{
 			_parser = parser;
 			_log = log;
@@ -38,27 +53,49 @@ namespace RuleEngine
 				Location = new Location() { Name = "Test" }
 			};
 
-			double doubleResult = 0;
-			bool boolResult = false;
+			//double doubleResult = 0;
+			//bool boolResult = false;
 
 			foreach (var rule in rules)
 			{
-				if (string.IsNullOrWhiteSpace(rule.InputType))
-				{
-					doubleResult = _parser.Parse<double>(rule.Expression);
-					_log.LogInformation($"Result of expression {rule.Expression} is {doubleResult}");
+                var returnType = GetShortcutType(rule.ReturnType) ?? Type.GetType(rule.ReturnType, false, true);
+                var methods = typeof(IParser).GetMethods().Where(m => m.ContainsGenericParameters).ToList();
+
+                if (string.IsNullOrWhiteSpace(rule.InputType))
+                {
+                    var method = methods.First(
+                        m => m.ReturnType.IsGenericParameter && m.GetGenericArguments().Length == 1 &&
+                             m.GetGenericArguments()[0] == m.ReturnType);
+                    var generic = method.MakeGenericMethod(returnType);
+                    var result = generic.Invoke(_parser, new object[] { rule.Expression });
+                    var finalResult = Convert.ChangeType(result, returnType);
+
+                    _log.LogInformation($"Result of expression {rule.Expression} is {finalResult}");
 				}
 				else
-				{
-					boolResult = _parser.Parse<Request, bool>(rule.Expression, request);
-					_log.LogInformation($"Result of expression {rule.Expression} is {boolResult}");
+                {
+                    var inputType = AppDomain.CurrentDomain.GetAssemblies().
+                        SelectMany(t => t.GetTypes()).First(t => string.Equals(t.Name, rule.InputType, StringComparison.Ordinal));
+                    var method = methods.First(m => m.ReturnType.IsGenericParameter && m.GetGenericArguments().Length == 2);
+                    var generic = method.MakeGenericMethod(new Type[] {inputType, returnType});
+                    var result = generic.Invoke(_parser, new object[] { rule.Expression, request });
+                    var finalResult = Convert.ChangeType(result, returnType);
+
+					_log.LogInformation($"Result of expression {rule.Expression} is {finalResult}");
 				}
 			}
 
 			Console.ReadKey();
 		}
 
-		public static bool IsDebug
+        private static Type GetShortcutType(string name)
+        {
+            Type toReturn = null;
+            _knownTypes.TryGetValue(name, out toReturn);
+            return toReturn; //returns null if not found
+        }
+
+        public static bool IsDebug
 		{
 			get
 			{

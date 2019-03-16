@@ -10,14 +10,14 @@ namespace RuleEngine.Domain.ExpressionParser
 	{
 		public object Parse<T>(string expression, T model)
 		{
-			var parameter = Expression.Parameter(typeof(T), "Request");
+			var parameter = Expression.Parameter(typeof(T), model.GetType().Name);
 			var exp = DynamicExpression.ParseLambda(new[] { parameter }, null, expression);
 			return exp.Compile().DynamicInvoke(model);
 		}
 
 		public V Parse<T, V>(string expression, T model)
 		{
-			var parameter = Expression.Parameter(typeof(T), "Request");
+			var parameter = Expression.Parameter(typeof(T), model.GetType().Name);
 			var exp = DynamicExpression.ParseLambda(new[] { parameter }, null, expression);
 			return (V)exp.Compile().DynamicInvoke(model);
 		}
