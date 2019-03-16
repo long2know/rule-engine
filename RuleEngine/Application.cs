@@ -53,9 +53,6 @@ namespace RuleEngine
 				Location = new Location() { Name = "Test" }
 			};
 
-			//double doubleResult = 0;
-			//bool boolResult = false;
-
 			foreach (var rule in rules)
 			{
                 var returnType = GetShortcutType(rule.ReturnType) ?? Type.GetType(rule.ReturnType, false, true);
@@ -63,6 +60,7 @@ namespace RuleEngine
 
                 if (string.IsNullOrWhiteSpace(rule.InputType))
                 {
+                    // Find method V Parse<V>(string expression)
                     var method = methods.First(
                         m => m.ReturnType.IsGenericParameter && m.GetGenericArguments().Length == 1 &&
                              m.GetGenericArguments()[0] == m.ReturnType);
@@ -70,18 +68,21 @@ namespace RuleEngine
                     var result = generic.Invoke(_parser, new object[] { rule.Expression });
                     var finalResult = Convert.ChangeType(result, returnType);
 
-                    _log.LogInformation($"Result of expression {rule.Expression} is {finalResult}");
+                    _log.LogInformation($"Result of expression {rule.Expression} is {finalResult} of type {returnType.Name}");
 				}
 				else
                 {
+                    // Find class Request
                     var inputType = AppDomain.CurrentDomain.GetAssemblies().
                         SelectMany(t => t.GetTypes()).First(t => string.Equals(t.Name, rule.InputType, StringComparison.Ordinal));
+
+                    // Find method V Parse<T, V>(string expression, T model)
                     var method = methods.First(m => m.ReturnType.IsGenericParameter && m.GetGenericArguments().Length == 2);
                     var generic = method.MakeGenericMethod(new Type[] {inputType, returnType});
                     var result = generic.Invoke(_parser, new object[] { rule.Expression, request });
                     var finalResult = Convert.ChangeType(result, returnType);
 
-					_log.LogInformation($"Result of expression {rule.Expression} is {finalResult}");
+					_log.LogInformation($"Result of expression {rule.Expression} is {finalResult} of type {returnType.Name}");
 				}
 			}
 
@@ -90,9 +91,10 @@ namespace RuleEngine
 
         private static Type GetShortcutType(string name)
         {
-            Type toReturn = null;
-            _knownTypes.TryGetValue(name, out toReturn);
-            return toReturn; //returns null if not found
+            _knownTypes.TryGetValue(name, out var toReturn);
+
+            //returns null if not found
+            return toReturn; 
         }
 
         public static bool IsDebug
